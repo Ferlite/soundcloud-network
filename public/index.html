@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SoundCloud Network</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>
+    // on the home page, hide the network's controls from the very first paint
+    if (location.pathname === '/') document.documentElement.classList.add('home');
+  </script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="progress" hidden><div id="pg-fill"></div></div>
+
+  <form id="go" autocomplete="off">
+    <input id="name" placeholder="soundcloud username" spellcheck="false">
+    <div id="suggestions" hidden></div>
+  </form>
+
+  <div id="mode" hidden>
+    <a data-mode="follow">Following</a><a data-mode="related">Fans also like</a><a data-mode="featured">Featured profiles</a>
+  </div>
+
+  <div id="legend">
+    <label><input type="checkbox" id="t-mutual"><i class="mutual"></i>Mutual (follow each other)</label>
+    <label><input type="checkbox" id="t-oneway"><i class="oneway"></i>One-way (follows, not followed back)</label>
+    <label><input type="checkbox" id="t-groups"><i class="note">&#9673;</i>Group friends into clusters</label>
+    <label><input type="checkbox" id="t-audio"><i class="note">&#9834;</i>Play a preview when hovering</label>
+    <label><input type="checkbox" id="t-followers"><i class="note">&#9679;</i>Size by follower count</label>
+  </div>
+  <div id="status"></div>
+
+  <aside id="panel" hidden>
+    <button id="close" title="Close">&times;</button>
+    <img id="p-avatar" alt="">
+    <h2 id="p-name"></h2>
+    <div id="p-user"></div>
+    <div id="p-stats"></div>
+    <div id="p-net"></div>
+    <div id="p-loc"></div>
+    <p id="p-bio"></p>
+    <div id="p-actions">
+      <a id="p-link" target="_blank" rel="noopener">Open on SoundCloud</a>
+      <button id="p-expand">Load who they follow</button>
+      <a id="p-center">Center network on them</a>
+    </div>
+  </aside>
+
+
+  <div id="nowplaying" hidden></div>
+
+  <button id="sb-toggle">People</button>
+  <aside id="sidebar">
+    <div id="sb-head">
+      <input id="sb-search" placeholder="Search people in this network" spellcheck="false" autocomplete="off">
+      <div id="sb-tabs">
+        <button class="on" data-view="connected">Most connected</button>
+        <button data-view="music">Music</button>
+      </div>
+    </div>
+    <div id="sb-list"></div>
+  </aside>
+
+  <div id="landing" hidden>
+    <div class="lp-inner">
+      <form id="lp-form" autocomplete="off">
+        <div class="lp-search">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="lp-name" placeholder="Search any SoundCloud profile" spellcheck="false">
+          <button type="submit">Explore</button>
+        </div>
+        <div id="lp-suggestions" hidden></div>
+      </form>
+
+      <p class="lp-hint">Or go straight to <code>/username</code></p>
+    </div>
+  </div>
+
+  <script src="/vendor/d3.min.js"></script>
+  <script src="/search.js"></script>
+  <script src="/landing.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

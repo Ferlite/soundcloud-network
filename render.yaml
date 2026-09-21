@@ -1,0 +1,9 @@
+# Render "Blueprint": lets Render set the service up from this repo automatically.
+services:
+  - type: web
+    name: soundcloud-network
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz

@@ -1,0 +1,17 @@
+{
+  "name": "soundcloud-network",
+  "version": "1.0.0",
+  "description": "Visualize a SoundCloud user's follow network",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "d3": "^7.9.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}
