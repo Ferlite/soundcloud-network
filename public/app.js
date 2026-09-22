@@ -329,7 +329,7 @@
       groups.push(g);
     }
 
-    if (show.groups) layoutGroups();
+    if (show.groups) layoutGroups(); // async: chunked across frames so it doesn't freeze the page
   }
 
   /* ---------- layout ---------- */
@@ -389,12 +389,39 @@
     dirty = true;
   }
 
+  // Runs work in slices of roughly `budgetMs` at a time, handing control back to the browser between
+  // slices (via requestAnimationFrame) so it can paint and respond to input instead of freezing. This
+  // is what keeps the page reactive while the group layout is being computed: without it, the whole
+  // computation below used to run in one go and lock the page up for several seconds.
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
+  async function inChunks(budgetMs, run) {
+    let t0 = performance.now();
+    for (let i = 0; ; i++) {
+      if (performance.now() - t0 > budgetMs) {
+        await nextFrame();
+        t0 = performance.now();
+      }
+      if (run(i) === false) return; // run() returns false once it's done
+    }
+  }
+
+  // A newer call always wins: if the network changes (or you flip a toggle) again while a layout is
+  // still being computed, the stale one notices next time it checks and quietly stops rather than
+  // overwriting the newer result.
+  let layoutGen = 0;
+
   // 1. every group's members are packed into a tight, non-overlapping cluster;
   // 2. each group (and each person outside a group) is one bubble, and the bubbles are spaced out
   //    with a small simulation that keeps a clear gap between them and pulls bubbles that follow
   //    each other closer;
   // 3. each person gets a target spot inside their bubble and eases there.
-  function layoutGroups() {
+  // Runs in chunks across animation frames (see inChunks) rather than all at once, so the page and
+  // the rest of the graph stay responsive while it works; sizes and existing positions are already
+  // visible and interactive the whole time, this only decides where things settle next.
+  async function layoutGroups() {
+    const gen = ++layoutGen;
+    const stale = () => gen !== layoutGen;
+
     // the starting profile is only pinned to the middle while the network loads; from here on it's
     // laid out like everyone else
     laidOut = true;
@@ -402,7 +429,10 @@
     root.fy = null;
     refreshRadii();
 
-    for (const g of groups) {
+    const groupList = groups; // snapshot: `groups` itself may be reassigned by a newer call
+    await inChunks(12, (i) => {
+      if (stale() || i >= groupList.length) return false;
+      const g = groupList[i];
       const ms = g.members;
       g.cx = ms.reduce((s, n) => s + n.x, 0) / ms.length;
       g.cy = ms.reduce((s, n) => s + n.y, 0) / ms.length;
@@ -436,11 +466,12 @@
       });
       g.local = pts;
       g.R = Math.max(...pts.map((p) => Math.hypot(p.x, p.y) + p.r)) + 8;
-    }
+    });
+    if (stale()) return;
 
     const bubbles = [];
     const bubbleOf = new Map();
-    for (const g of groups) {
+    for (const g of groupList) {
       const b = { g, r: g.R + GROUP_GAP / 2, x: g.cx, y: g.cy };
       bubbles.push(b);
       g.members.forEach((n) => bubbleOf.set(n, b));
@@ -466,7 +497,8 @@
     for (const l of links) tie(bubbleOf.get(l.source), bubbleOf.get(l.target), l.mutual ? 3 : 1);
     for (const l of treeLinks) tie(bubbleOf.get(l.source), bubbleOf.get(l.target), 4);
 
-    d3.forceSimulation(bubbles)
+    const bubbleSim = d3
+      .forceSimulation(bubbles)
       .force(
         'link',
         d3
@@ -478,8 +510,13 @@
       .force('collide', d3.forceCollide((b) => b.r).iterations(6))
       .force('x', d3.forceX(0).strength(0.06))
       .force('y', d3.forceY(0).strength(0.06))
-      .stop()
-      .tick(400);
+      .stop();
+    const BUBBLE_TICKS = 400;
+    await inChunks(12, (i) => {
+      if (stale() || i >= BUBBLE_TICKS) return false;
+      bubbleSim.tick();
+    });
+    if (stale()) return;
 
     for (const b of bubbles) {
       if (b.g) {
@@ -496,6 +533,7 @@
     applyTargets();
     layoutDoneSig = layoutSig();
     layoutStore[layoutKey()] = { sig: layoutDoneSig, pos: new Map(nodes.map((n) => [n, [n.tx, n.ty]])) };
+    graphChanged(0.9); // make sure the sim has enough energy left to ease everyone into these spots
   }
 
   // Swaps the live physics for easing everyone towards their computed spot (n.tx, n.ty).
