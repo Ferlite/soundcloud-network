@@ -55,8 +55,8 @@
   $('#name').placeholder = rootName;
 
   // mode switch: same person, other kind of network
+  $('#controls').hidden = false; // reveals both the "generate by" and "size by" groups
   const modeBox = $('#mode');
-  modeBox.hidden = false;
   for (const a of modeBox.querySelectorAll('a')) {
     const p = new URLSearchParams(location.search);
     ['depth', 'limit', 'child'].forEach((k) => p.delete(k)); // each mode has its own defaults
@@ -890,7 +890,6 @@
   // "Size by" row: picks what circle size means (see SIZE_MODES). Unlike the checkboxes above these
   // are mutually exclusive, so clicking one just marks it current rather than toggling.
   const sizeByBox = $('#sizeby');
-  sizeByBox.hidden = false;
   for (const a of sizeByBox.querySelectorAll('a')) {
     a.addEventListener('click', () => {
       if (a.classList.contains('on')) return;
@@ -1390,7 +1389,6 @@
   const sidebar = $('#sidebar');
   const sbList = $('#sb-list');
   const sbSearch = $('#sb-search');
-  const sbOpen = () => document.body.classList.contains('sb-open');
   const score = (n) => n.degree + n.mutuals;
   const MAX_ROWS = 200;
   let sbView = 'connected';
@@ -1399,7 +1397,7 @@
   const openGroups = new Set(); // groups the person has expanded, so a refresh keeps them open
 
   function scheduleSidebar() {
-    if (!sbOpen() || sbView === 'music') return; // the playlist is built once, not as the network changes
+    if (sbView === 'music') return; // the playlist is built once, not as the network changes
     clearTimeout(sbTimer);
     sbTimer = setTimeout(renderSidebar, 1200);
   }
@@ -1715,12 +1713,6 @@
     mAudio.dispatchEvent(new Event('timeupdate'));
   }
 
-  function setSidebar(open) {
-    document.body.classList.toggle('sb-open', open);
-    $('#sb-toggle').textContent = open ? 'Hide' : 'People';
-    if (open) renderSidebar();
-  }
-  $('#sb-toggle').addEventListener('click', () => setSidebar(!sbOpen()));
   sbSearch.addEventListener('input', renderSidebar);
   sbSearch.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && sbView === 'music') playTrack(music.firstHit);
@@ -1739,7 +1731,7 @@
       if (sbView === 'music' && !music.asked.size) loadMusic(); // first visit: build the playlist
     });
   }
-  setSidebar(window.innerWidth >= 1000);
+  renderSidebar(); // the sidebar is always visible now, so fill it in right away
 
   /* ---------- search suggestions ---------- */
 
