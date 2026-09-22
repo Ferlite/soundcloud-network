@@ -29,8 +29,18 @@
     <label><input type="checkbox" id="t-oneway"><i class="oneway"></i>One-way (follows, not followed back)</label>
     <label><input type="checkbox" id="t-groups"><i class="note">&#9673;</i>Group friends into clusters</label>
     <label><input type="checkbox" id="t-audio"><i class="note">&#9834;</i>Play a preview when hovering</label>
-    <label><input type="checkbox" id="t-followers"><i class="note">&#9679;</i>Size by follower count</label>
   </div>
+
+  <div id="sizeby" hidden>
+    <span>Size by</span>
+    <a data-size="normal" class="on" title="How connected someone is in this network">Normal</a>
+    <a data-size="followers" title="Follower count on SoundCloud">SC Followers</a>
+    <a data-size="followings" title="Following count on SoundCloud">SC Following</a>
+    <a data-size="netFollowers" title="Follower count in this network">Net Followers</a>
+    <a data-size="netFollowings" title="Following count in this network">Net Following</a>
+    <a data-size="netMutual" title="Mutual connections in this network">Net Mutual</a>
+  </div>
+
   <div id="status"></div>
 
   <aside id="panel" hidden>

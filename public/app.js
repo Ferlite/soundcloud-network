@@ -86,24 +86,36 @@
   const STALE_LIMIT = 120; // this many rechecks in a row that find nothing new = done
   let scraping = true;
 
-  // circle size follows how connected someone is in this network (links, with mutuals counting
-  // double), on a square-root scale so hubs stand out without swallowing everyone else
-  // Sizes are relative to the most connected person in this network, over a wide range: the biggest
-  // hub gets R_MAX and someone with a couple of connections is a small dot.
+  // Circle size follows one of six metrics (see SIZE_MODES below), relative to the most extreme
+  // person in this network: the biggest gets R_MAX and someone with almost none of that metric is a
+  // small dot. "normal" and the two in-network metrics grow on a gentle curve since they're already
+  // small numbers; the SoundCloud-wide follower/following counts run from a handful to millions, so
+  // those use a log scale, squared so the big accounts stand well clear of the small ones.
   const R_MIN = 4;
   const R_MAX = 64;
-  let maxScore = 1;
-  let maxFollowers = 1;
-  const radiusOf = (n) => {
-    if (show.followers) {
-      // "Size by follower count": log scale (follower counts run from a handful to millions), squared
-      // so the big accounts stand well clear of the small ones
-      const t = Math.log10(1 + (n.followers || 0)) / Math.log10(1 + maxFollowers);
-      return R_MIN + (R_MAX - R_MIN) * t * t;
-    }
-    return R_MIN + (R_MAX - R_MIN) * Math.pow(Math.min(1, (n.degree + n.mutuals) / maxScore), 0.9);
+  let sizeMode = 'normal';
+  let maxScore = 1; // normal: degree + mutuals
+  let maxFollowers = 1; // SoundCloud followers
+  let maxFollowings = 1; // SoundCloud following
+  let maxNetFollowers = 1; // in-network followers (inCount + mutuals)
+  let maxNetFollowings = 1; // in-network following (outCount + mutuals)
+  let maxNetMutual = 1; // in-network mutuals
+  const SIZE_MODES = {
+    normal: { max: () => maxScore, value: (n) => n.degree + n.mutuals, log: false },
+    followers: { max: () => maxFollowers, value: (n) => n.followers || 0, log: true },
+    followings: { max: () => maxFollowings, value: (n) => n.followings || 0, log: true },
+    netFollowers: { max: () => maxNetFollowers, value: (n) => n.inCount + n.mutuals, log: false },
+    netFollowings: { max: () => maxNetFollowings, value: (n) => n.outCount + n.mutuals, log: false },
+    netMutual: { max: () => maxNetMutual, value: (n) => n.mutuals, log: false },
   };
-  // as the biggest hub grows everyone else's relative size changes, so sizes are refreshed together
+  const radiusOf = (n) => {
+    const m = SIZE_MODES[sizeMode] || SIZE_MODES.normal;
+    const max = Math.max(1, m.max());
+    const v = m.value(n);
+    const t = m.log ? Math.log10(1 + v) / Math.log10(1 + max) : Math.min(1, v / max);
+    return R_MIN + (R_MAX - R_MIN) * (m.log ? t * t : Math.pow(t, 0.9));
+  };
+  // as the most extreme person changes everyone else's relative size changes, so sizes are refreshed together
   const refreshRadii = () => nodes.forEach((n) => (n.r = radiusOf(n)));
 
   function addNode(u, parent, depth) {
@@ -114,6 +126,8 @@
       depth,
       degree: 0,
       mutuals: 0,
+      outCount: 0, // one-way links where this person is the follower (not counting mutuals)
+      inCount: 0, // one-way links where this person is followed (not counting mutuals)
       links: [], // every link touching this person
       group: -1, // index into `groups`, or -1 if they aren't part of a friend group
       pos: parent, // who they were found through
@@ -126,6 +140,7 @@
       y: (parent ? parent.y : 0) + Math.sin(a) * 60,
     });
     maxFollowers = Math.max(maxFollowers, n.followers || 0);
+    maxFollowings = Math.max(maxFollowings, n.followings || 0);
     n.r = radiusOf(n);
     nodes.push(n);
     byId.set(n.id, n);
@@ -140,6 +155,13 @@
   let mutualTotal = 0;
   let physChanged = false;
 
+  function bumpMaxes(a, b) {
+    maxScore = Math.max(maxScore, a.degree + a.mutuals, b.degree + b.mutuals);
+    maxNetFollowers = Math.max(maxNetFollowers, a.inCount + a.mutuals, b.inCount + b.mutuals);
+    maxNetFollowings = Math.max(maxNetFollowings, a.outCount + a.mutuals, b.outCount + b.mutuals);
+    maxNetMutual = Math.max(maxNetMutual, a.mutuals, b.mutuals);
+  }
+
   // Returns true if the graph changed (a new link, or a one-way link that turned out to be mutual).
   function addLink(a, b, discovered = false) {
     if (a === b) return false;
@@ -152,7 +174,7 @@
       mutualTotal++;
       a.mutuals++;
       b.mutuals++;
-      maxScore = Math.max(maxScore, a.degree + a.mutuals, b.degree + b.mutuals);
+      bumpMaxes(a, b);
       a.r = radiusOf(a);
       b.r = radiusOf(b);
       scheduleGroups();
@@ -165,7 +187,9 @@
     b.links.push(l);
     a.degree++;
     b.degree++;
-    maxScore = Math.max(maxScore, a.degree + a.mutuals, b.degree + b.mutuals);
+    a.outCount++;
+    b.inCount++;
+    bumpMaxes(a, b);
     a.r = radiusOf(a);
     b.r = radiusOf(b);
     if (discovered) {
@@ -353,12 +377,11 @@
     dirty = true;
   }
 
-  // "Size by follower count": circles are sized by followers instead of by how connected someone is
-  // in this network. Sizes shape the grouped layout, so it's laid out again for the new sizes (or a
-  // saved one is reused).
-  function setSizeMode(on) {
-    if (!root) return;
-    show.followers = on;
+  // Switches what circle size means (see SIZE_MODES). Sizes shape the grouped layout, so it's laid
+  // out again for the new sizes (or a saved one for that mode is reused).
+  function setSizeMode(mode) {
+    if (!root || !SIZE_MODES[mode] || mode === sizeMode) return;
+    sizeMode = mode;
     refreshRadii();
     userMoved = false; // extents change with the sizes, so let the view refit
     if (show.groups && !reuseLayout()) detectGroups();
@@ -490,7 +513,7 @@
   // each way of sizing circles, since sizes shape the layout). If nothing that affects a layout (the
   // people and mutual links) has changed since, switching back to it just reapplies it.
   const layoutSig = () => nodes.length + ':' + mutualTotal;
-  const layoutKey = () => (show.followers ? 'followers' : 'connections');
+  const layoutKey = () => sizeMode;
   const layoutStore = {}; // key -> { sig, pos: Map(person -> [x, y]) }
   let layoutDoneSig = null;
 
@@ -787,7 +810,7 @@
   const neighbours = new Set();
 
   // legend checkboxes switch link layers (and the hover preview) on and off
-  const show = { mutual: true, oneWay: false, audio: true, groups: true, followers: false }; // followers: off unless switched on
+  const show = { mutual: true, oneWay: false, audio: true, groups: true };
   const remembered = { audio: 'preview', groups: 'groups' }; // choices kept between visits
   try {
     for (const [key, name] of Object.entries(remembered)) show[key] = localStorage.getItem(name) !== '0';
@@ -799,13 +822,12 @@
   // value the grouped view had is put back when grouping is switched on again.
   let oneWayWhenGrouped = show.oneWay;
   if (!show.groups) show.oneWay = true;
-  for (const [id, key] of [['#t-mutual', 'mutual'], ['#t-oneway', 'oneWay'], ['#t-audio', 'audio'], ['#t-groups', 'groups'], ['#t-followers', 'followers']]) {
+  for (const [id, key] of [['#t-mutual', 'mutual'], ['#t-oneway', 'oneWay'], ['#t-audio', 'audio'], ['#t-groups', 'groups']]) {
     const box = $(id);
     box.checked = show[key];
     box.addEventListener('change', () => {
       show[key] = box.checked;
       if (key === 'audio' && !show.audio) stopPreview();
-      if (key === 'followers') setSizeMode(show.followers);
       if (key === 'oneWay' && show.groups) oneWayWhenGrouped = show.oneWay;
       if (key === 'groups') {
         if (show.groups) show.oneWay = oneWayWhenGrouped;
@@ -824,6 +846,18 @@
         }
       }
       dirty = true;
+    });
+  }
+
+  // "Size by" row: picks what circle size means (see SIZE_MODES). Unlike the checkboxes above these
+  // are mutually exclusive, so clicking one just marks it current rather than toggling.
+  const sizeByBox = $('#sizeby');
+  sizeByBox.hidden = false;
+  for (const a of sizeByBox.querySelectorAll('a')) {
+    a.addEventListener('click', () => {
+      if (a.classList.contains('on')) return;
+      sizeByBox.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x === a));
+      setSizeMode(a.dataset.size);
     });
   }
 
